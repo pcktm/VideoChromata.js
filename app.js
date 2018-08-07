@@ -7,9 +7,7 @@
 //              __/ |                                     | |           __/ |                     
 //             |___/                                      |_|          |___/                      
 var length, settings, frameindex = 0, zip = new JSZip();
-
 $("document").ready(function() {
-    console.log('Document ready')
     $("input[value='color']").click();
     $("input[value='low']").click();
     $("input[value='smooth']").click();
@@ -48,7 +46,7 @@ $("document").ready(function() {
             turningAngle: eval($('#turning-angle option:selected').val()),
             timeout: $('#timeout-frame').val() * 1000
         };
-        console.log(settings);
+        //console.log(settings);
         var file = $('#file').prop('files')[0]
         processZip(file)
       });
@@ -58,10 +56,13 @@ $("document").ready(function() {
 
 //IMAGES IN ZIP TO BLOB ARRAY
 function processZip(file) {
+    
+    $('.accordion').hide();
+    
     JSZip.loadAsync(file).then((zip, i = 0) => {
         length = Object.keys(zip.files).length
         var frames = new Array;
-
+        $('.uk-container').append(`<p class="uk-text-right progress-frames">0/${length} frames processed | 0% | ETA: ${settings.timeout/1000 * length} seconds</p><progress class="uk-progress" value="0" max="${length}"></progress>`);
         zip.forEach((relativePath, zipEntry) => {
             zipEntry.async('arraybuffer').then(out => {
                 i++;
@@ -74,7 +75,6 @@ function processZip(file) {
                     path: relativePath
                 });
                 if (i == length) {
-                    console.log('done processing zip');
                     processImages(frames);
                 }
             })
@@ -86,17 +86,17 @@ function processImages(frames) {
     frames.reduce(
         (chain, e) => chain.then(() => asyncFn(e)),
         Promise.resolve()
-    );
+    )
 }
 
 
 
-function asyncFn(e) {
+function asyncFn(e, framebuffer) {
     return new Promise((res, rej) => {
         //do stuff 
-        console.log('start: ' + e.path)
+        console.log("Rendering: " + e.path)
         $(".framebuffer").attr("src", e.blob);
-        var imageElement = document.querySelector('.framebuffer');
+        var imageElement = document.querySelector(".framebuffer");
         var chromata = new Chromata(imageElement, settings);
         chromata.start();
         setTimeout(() => {
@@ -106,10 +106,11 @@ function asyncFn(e) {
             zip.file(e.path, canvas.toDataURL("image/jpeg").split(',')[1], {
                 base64: true
             });
-            console.log(`save:  ${e.path}`);
+            //console.log(`${framebuffer} saved:  ${e.path}`);
             chromata.reset()
             res(e);
-
+            $('.uk-progress').val(frameindex)
+            $('.progress-frames').text(`${frameindex}/${length} frames processed | ${Math.round(frameindex/length*100)}% | ETA: ${(settings.timeout/1000 * length) - frameindex * settings.timeout/1000} seconds`)
             //save the zip
             if (frameindex == length) {
                 console.log('done processing frames');

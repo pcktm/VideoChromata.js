@@ -10,10 +10,11 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/uikit/3.0.0-rc.10/css/uikit.min.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/uikit/3.0.0-rc.10/js/uikit.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/uikit/3.0.0-rc.10/js/uikit-icons.min.js"></script>
-
+    </head>
     <body>
         <div class="uk-container"><br><br>
-            <center><h1>VideoChromata.js</h1></center><br><hr>
+            <center><h1><a class="uk-link-text" href="https://github.com/pcktm/VideoChromata.js">VideoChromata.js</a></h1>1.2.0<br></center><br><hr>
+
             <ul uk-accordion class="accordion">
                 <li class="uk-open">
                     <a class="uk-accordion-title" href="#">1. Source</a>
@@ -105,9 +106,19 @@
                         <button class="uk-button uk-button-default uk-button-large button-render">Render</button>
                 </li>
             </ul>
-            <img src="" class="framebuffer" height="700">
+            
+            </div>
+            <br>
+            <center>
+            <img src="" class="framebuffer"></center>
+            <style>
+                canvas{
+                    background-color:black; 
+                }
+            </style>
     </body>
     <script src="./dependencies/jquery-3.3.1.min.js"></script>
+    
     <script src="./dependencies/jszip.min.js"></script>
     <script src="./dependencies/chromata.min.js"></script>
     <script src="./dependencies/FileSaver.js"></script>
