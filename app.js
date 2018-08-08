@@ -6,7 +6,12 @@
 //  |_| |_| |_|\__, |  \___\___/ \__,_|\___|          |___/ .__/ \__,_|\__, |_| |_|\___|\__|\__|_|
 //              __/ |                                     | |           __/ |                     
 //             |___/                                      |_|          |___/                      
-var length, settings, frameindex = 0, zip = new JSZip();
+
+
+var length, settings, frameindex = 0, zip = new JSZip(), renderers = {count: 0, instances: []};
+var bc = new BroadcastChannel('videochromata');
+
+
 $("document").ready(function() {
     $("input[value='color']").click();
     $("input[value='low']").click();
@@ -29,6 +34,10 @@ $("document").ready(function() {
         $('#line-count-desc').text($(this).val())
     });
 
+    $(".button-add-renderer").click(function() {
+        window.open('worker.html', 'worker' + renderers.count, "height=500,width=1000");
+    });
+
     $(".button-render").click(function() {
         UIkit.accordion($('.accordion')[0]).toggle(3);
         $(".button-render").hide();
@@ -47,7 +56,7 @@ $("document").ready(function() {
             timeout: $('#timeout-frame').val() * 1000
         };
         //console.log(settings);
-        var file = $('#file').prop('files')[0]
+        var file = $('#file').prop('files')[0];
         processZip(file)
       });
 
@@ -55,23 +64,21 @@ $("document").ready(function() {
 
 
 //IMAGES IN ZIP TO BLOB ARRAY
-function processZip(file) {
-    
+function processZip(file) { 
     $('.accordion').hide();
-    
     JSZip.loadAsync(file).then((zip, i = 0) => {
         length = Object.keys(zip.files).length
         var frames = new Array;
-        $('.uk-container').append(`<p class="uk-text-right progress-frames">0/${length} frames processed | 0% | ETA: ${settings.timeout/1000 * length} seconds</p><progress class="uk-progress" value="0" max="${length}"></progress>`);
+        $('.uk-container').append(`<p class="uk-text-right progress-frames">0/${length} frames processed | 0% | ETA: ${Math.round((settings.timeout/1000 * length)/renderers.count)} seconds</p><progress class="uk-progress" value="0" max="${length}"></progress>`);
         zip.forEach((relativePath, zipEntry) => {
-            zipEntry.async('arraybuffer').then(out => {
+            zipEntry.async('base64').then(out => {
                 i++;
-                var blob = new Blob([out], {
+                /*var blob = new Blob([out], {
                     'type': 'image/png'
-                });
+                }); */
 
                 frames.push({
-                    blob: URL.createObjectURL(blob),
+                    image: out,
                     path: relativePath
                 });
                 if (i == length) {
@@ -83,35 +90,42 @@ function processZip(file) {
 }
 
 function processImages(frames) {
-    frames.reduce(
-        (chain, e) => chain.then(() => asyncFn(e)),
-        Promise.resolve()
-    )
+    var chunkSize = Math.ceil(length/renderers.count);
+    var cutframes = frames.reduce((resultArray, item, index) => { 
+        const chunkIndex = Math.floor(index/chunkSize)
+        if(!resultArray[chunkIndex]) {
+            resultArray[chunkIndex] = []
+        }
+        resultArray[chunkIndex].push(item)
+        return resultArray
+    }, [])
+    console.log(cutframes)
+    for (const key in cutframes) {
+        if (cutframes.hasOwnProperty(key)) {
+            const element = cutframes[key];
+            bc.postMessage({
+                type: 'renderOrder',
+                frames: element,
+                settings: settings,
+                renderer: renderers.instances[key]
+            })
+        }
+    }
 }
 
 
-
-function asyncFn(e, framebuffer) {
-    return new Promise((res, rej) => {
-        //do stuff 
-        console.log("Rendering: " + e.path)
-        $(".framebuffer").attr("src", e.blob);
-        var imageElement = document.querySelector(".framebuffer");
-        var chromata = new Chromata(imageElement, settings);
-        chromata.start();
-        setTimeout(() => {
+bc.onmessage = (ev) => {
+    console.log(ev.data)
+    switch (ev.data.type){
+        case 'encodedImage':
             frameindex++;
-            chromata.stop();
-            var canvas = $('canvas')[0];
-            zip.file(e.path, canvas.toDataURL("image/jpeg").split(',')[1], {
+            $(".framebuffer").attr("src", "data:image/png;base64," + ev.data.image);
+            var data = ev.data.image.replace(/^data:image\/\w+;base64,/, "");
+            zip.file(ev.data.path, data, {
                 base64: true
             });
-            //console.log(`${framebuffer} saved:  ${e.path}`);
-            chromata.reset()
-            res(e);
             $('.uk-progress').val(frameindex)
             $('.progress-frames').text(`${frameindex}/${length} frames processed | ${Math.round(frameindex/length*100)}% | ETA: ${(settings.timeout/1000 * length) - frameindex * settings.timeout/1000} seconds`)
-            //save the zip
             if (frameindex == length) {
                 console.log('done processing frames');
                 zip.generateAsync({
@@ -121,7 +135,41 @@ function asyncFn(e, framebuffer) {
                     location.reload();
                 });
             }
-        }, settings.timeout);
-    });
-
+            break;
+        case 'registerRenderer':
+            renderers.count++;
+            renderers.instances.push(ev.data.id);
+            $('.renderers-count').text('Renderers: ' + renderers.count);
+            console.log(renderers)
+            break;
+        case 'deregisterRenderer':
+            renderers.count--;
+            renderers.instances.remove(ev.data.id);
+            $('.renderers-count').text('Renderers: ' + renderers.count);
+            console.log(renderers)
+            break;
+    }
+    
 }
+
+window.onbeforeunload = function(){
+    bc.postMessage({type: 'processExit'})
+};
+
+//stack overflow
+function uuidv4() {
+    return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+      (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+    )
+}
+
+Array.prototype.remove = function() {
+    var what, a = arguments, L = a.length, ax;
+    while (L && this.length) {
+        what = a[--L];
+        while ((ax = this.indexOf(what)) !== -1) {
+            this.splice(ax, 1);
+        }
+    }
+    return this;
+};
