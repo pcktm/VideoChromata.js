@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>VideoChromata renderer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="./dependencies/jquery-3.3.1.min.js"></script>
+    <script src="./dependencies/chromata.min.js"></script>
+</head>
+<body>
+    <span class='status'>Awaiting job...</span>
+    <img src="" class='framebuffer'>
+</body>            
+<style>
+    canvas{
+        background-color:black; 
+    }
+</style>
+<script>
+var bc = new BroadcastChannel('videochromata');
+var rendererID = uuidv4();
+
+bc.postMessage({type: 'registerRenderer', id: rendererID})
+
+bc.onmessage = (ev) => {
+    console.log(ev.data)
+    console.log(rendererID)
+    switch (ev.data.type){
+        case 'renderOrder':
+            if(ev.data.renderer == rendererID) {
+                processImages(ev.data);
+                };
+            break;
+        case 'processExit': 
+            window.close();
+            break;
+    }
+    
+}
+
+window.onbeforeunload = function(){
+    bc.postMessage({type: 'deregisterRenderer', id: rendererID})
+    return 'U sure?'
+};
+
+function render(message){
+    $('.status').text(`Rendering ${message.path}`)
+    $(".framebuffer").attr("src", message.source);
+    var imageElement = document.querySelector(".framebuffer");
+    var chromata = new Chromata(imageElement, message.settings);
+    chromata.start();
+    setTimeout(() => {
+        var canvas = $('canvas')[0];
+        var response = {
+            type: 'encodedImage',
+            image: canvas.toDataURL("image/jpeg").split(',')[1],
+            path: message.path,
+            uuid: message.uuid,
+            rendererID: rendererID
+        }
+        chromata.reset()
+        bc.postMessage(response)
+        $('.status').text("Awaiting job...")
+    }, message.settings.timeout);
+}
+
+
+function processImages(message) {
+    message.frames.reduce(
+        (chain, e) => chain.then(() => asyncFn(e, message)),
+        Promise.resolve()
+    )
+}
+
+function asyncFn(e, message) {
+    console.log(e.image)
+    return new Promise((res, rej) => {
+    $('.status').text(`Rendering ${e.path}`)
+    $(".framebuffer").attr("src", "data:image/jpeg;base64," + e.image);
+    var imageElement = document.querySelector(".framebuffer");
+    var chromata = new Chromata(imageElement, message.settings);
+    chromata.start();
+    setTimeout(() => {
+        var canvas = $('canvas')[0];
+        
+        res(e)
+        var response = {
+            type: 'encodedImage',
+            image: canvas.toDataURL("image/jpeg").split(',')[1],
+            path: e.path,
+            rendererID: rendererID
+        }
+        bc.postMessage(response)
+        chromata.reset()
+        $('.status').text("Awaiting job...")
+    }, message.settings.timeout);
+    });
+
+}
+
+function uuidv4() {
+    return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+      (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+    )
+}
+
+</script>
+</html>
